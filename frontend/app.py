@@ -13,7 +13,7 @@ import plotly.express as px
 import requests
 import streamlit as st
 
-API_BASE_URL = os.environ.get("RFM_API_URL", "http://localhost:8000")
+API_BASE_URL = os.environ.get("RFM_API_URL", "https://rfm-segmentation-project.onrender.com")
 
 SEGMENT_COLORS = {
     "Champions": "#2ECC71",
