@@ -1,0 +1,6 @@
+/backend/venv/
+frontend/venv/
+__pycache__/
+*.db
+*.sqlite
+venv
