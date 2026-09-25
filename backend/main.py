@@ -1,15 +1,4 @@
-"""
-main.py
-FastAPI backend exposing the RFM segmentation engine.
-
-Endpoints:
-    POST /api/upload                 - upload a CSV, run the full pipeline, persist results
-    GET  /api/runs                   - list past runs (summary)
-    GET  /api/runs/{run_id}          - single run summary
-    GET  /api/runs/{run_id}/segments - full per-customer segment data for a run
-    GET  /api/runs/{run_id}/export   - CSV download (optionally filtered by segment)
-"""
-
+import io
 from io import StringIO
 from typing import Optional
 
@@ -65,13 +54,25 @@ def _run_to_summary(db: Session, run: Run) -> RunSummaryOut:
 async def upload_transactions(
     file: UploadFile = File(...), db: Session = Depends(get_db)
 ):
-    if not file.filename.lower().endswith(".csv"):
-        raise HTTPException(status_code=400, detail="Please upload a .csv file.")
+    # 1. Validate extension for both CSV and XLSX
+    if not file.filename.lower().endswith((".csv", ".xlsx")):
+        raise HTTPException(status_code=400, detail="Please upload a .csv or .xlsx file.")
 
     file_bytes = await file.read()
 
     try:
-        labeled_rfm, report = run_pipeline(file_bytes)
+        # 2. Read the file into a Pandas DataFrame based on its extension
+        if file.filename.lower().endswith(".csv"):
+            df = pd.read_csv(io.BytesIO(file_bytes))
+        else:
+            df = pd.read_excel(io.BytesIO(file_bytes), engine='openpyxl')
+            
+        # 3. Convert back to CSV bytes so we don't break the existing run_pipeline logic
+        standardized_bytes = df.to_csv(index=False).encode('utf-8')
+        
+        # 4. Pass the standardized data to the engine
+        labeled_rfm, report = run_pipeline(standardized_bytes)
+        
     except DataValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
@@ -159,7 +160,7 @@ def get_run_segments(run_id: int, db: Session = Depends(get_db)):
         for s in segments
     ]
 
-# new change 
+
 @app.delete("/api/runs/{run_id}")
 def delete_run(run_id: int, db: Session = Depends(get_db)):
     run = db.query(Run).filter(Run.id == run_id).first()
@@ -176,11 +177,6 @@ def delete_run(run_id: int, db: Session = Depends(get_db)):
         ) from exc
 
     return {"detail": f"Run {run_id} and its segments were deleted."}
-
-
-@app.get("/api/runs/{run_id}/export")
-
-# new change 
 
 
 @app.get("/api/runs/{run_id}/export")
@@ -220,8 +216,3 @@ def export_segment_csv(
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
-
-
-@app.get("/")
-def root():
-    return {"status": "ok", "service": "RFM Segmentation Engine API"}

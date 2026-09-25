@@ -28,6 +28,24 @@ st.set_page_config(
     page_icon="📊",
 )
 
+# --- NEW CHANGE 1: Force hand pointer cursor via CSS ---
+# This overrides Streamlit's default "I" text cursor on clickable areas
+st.markdown(
+    """
+    <style>
+    div[data-testid="stFileUploadDropzone"], 
+    div[data-testid="stFileUploadDropzone"] *,
+    div[data-testid="stButton"] button,
+    div[role="dialog"],
+    div[role="dialog"] * {
+        cursor: pointer !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+# ---------------------------------------------------------
+
 # --------------------------------------------------------------------------
 # Session state
 # --------------------------------------------------------------------------
@@ -61,7 +79,16 @@ def load_run_segments(run_id: int, run_summary: dict):
 
 
 def upload_file(file):
-    files = {"file": (file.name, file.getvalue(), "text/csv")}
+    # --- NEW CHANGE 2: Dynamically handle Excel vs CSV MIME types ---
+    # This tells the 'requests' library how to package the file for FastAPI
+    if file.name.lower().endswith(".xlsx"):
+        mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    else:
+        mime_type = "text/csv"
+        
+    files = {"file": (file.name, file.getvalue(), mime_type)}
+    # ----------------------------------------------------------------
+    
     resp = requests.post(f"{API_BASE_URL}/api/upload", files=files, timeout=120)
     if resp.status_code != 200:
         detail = resp.json().get("detail", resp.text)
@@ -94,13 +121,15 @@ with st.sidebar:
     st.title("📊 RFM Engine")
     st.caption(f"Backend: {API_BASE_URL}")
 
+    # --- NEW CHANGE 3: Update text and allow .xlsx extensions ---
     st.subheader("Upload transaction log")
     uploaded_file = st.file_uploader(
-        "CSV with TransactionID, CustomerID, OrderDate, Amount "
+        "CSV or Excel with TransactionID, CustomerID, OrderDate, Amount "
         "(Email optional)",
-        type=["csv"],
+        type=["csv", "xlsx"], # Allowed extensions updated here
         key=f"uploader_{st.session_state.uploader_key}",
     )
+    # ------------------------------------------------------------
     if uploaded_file is not None:
         col_a, col_b = st.columns(2)
         with col_a:
@@ -167,7 +196,7 @@ with st.sidebar:
                     st.session_state.pending_delete = None
                     st.rerun()
     else:
-        st.caption("No runs yet — upload a CSV to get started.")
+        st.caption("No runs yet — upload a CSV or Excel file to get started.")
 
 
 # --------------------------------------------------------------------------
@@ -179,10 +208,12 @@ run = st.session_state.active_run
 df = st.session_state.segments_df
 
 if run is None or df is None or df.empty:
+    # --- NEW CHANGE 4: Update dashboard welcome text ---
     st.info(
-        "Upload a transaction CSV in the sidebar to run the segmentation "
+        "Upload a transaction CSV or Excel file in the sidebar to run the segmentation "
         "pipeline, or load a previous run."
     )
+    # ---------------------------------------------------
     st.markdown(
         "**Required columns:** `TransactionID`, `CustomerID`, `OrderDate`, "
         "`Amount`  \n**Optional:** `Email`"
