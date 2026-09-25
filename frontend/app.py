@@ -30,6 +30,10 @@ st.set_page_config(
 
 # --- NEW CHANGE 1: Force hand pointer cursor via CSS ---
 # This overrides Streamlit's default "I" text cursor on clickable areas
+# --- NEW CHANGE 1: Force hand pointer cursor via CSS ---
+# This overrides Streamlit's default "I" text cursor on clickable areas
+# --- NEW CHANGE 1: Force hand pointer cursor via CSS ---
+# This overrides Streamlit's default "I" text cursor on clickable areas
 st.markdown(
     """
     <style>
@@ -37,13 +41,17 @@ st.markdown(
     div[data-testid="stFileUploadDropzone"] *,
     div[data-testid="stButton"] button,
     div[role="dialog"],
-    div[role="dialog"] * {
+    div[role="dialog"] *,
+    div[data-testid="stSelectbox"] *,
+    div[data-baseweb="select"] * {
         cursor: pointer !important;
     }
     </style>
     """,
     unsafe_allow_html=True
 )
+# ---------------------------------------------------------
+# ---------------------------------------------------------
 # ---------------------------------------------------------
 
 # --------------------------------------------------------------------------
