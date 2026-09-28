@@ -7,7 +7,7 @@ first, then this app.
 """
 
 import os
-
+import numpy as np
 import pandas as pd
 import plotly.express as px
 import requests
@@ -22,21 +22,23 @@ SEGMENT_COLORS = {
     "Hibernating": "#E74C3C",
 }
 
+# Must be the first Streamlit command
 st.set_page_config(
     page_title="Customer Segmentation & RFM Engine",
     layout="wide",
     page_icon="📊",
 )
 
-# --- NEW CHANGE 1: Force hand pointer cursor via CSS ---
-# This overrides Streamlit's default "I" text cursor on clickable areas
-# --- NEW CHANGE 1: Force hand pointer cursor via CSS ---
-# This overrides Streamlit's default "I" text cursor on clickable areas
-# --- NEW CHANGE 1: Force hand pointer cursor via CSS ---
-# This overrides Streamlit's default "I" text cursor on clickable areas
+# --- CSS: Hide Branding & Force hand pointer cursor ---
 st.markdown(
     """
     <style>
+    /* Hide Streamlit Branding */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+
+    /* Force Hand Pointer */
     div[data-testid="stFileUploadDropzone"], 
     div[data-testid="stFileUploadDropzone"] *,
     div[data-testid="stButton"] button,
@@ -50,9 +52,6 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-# ---------------------------------------------------------
-# ---------------------------------------------------------
-# ---------------------------------------------------------
 
 # --------------------------------------------------------------------------
 # Session state
@@ -77,7 +76,6 @@ def fetch_runs():
         st.sidebar.error(f"Could not reach backend at {API_BASE_URL}: {exc}")
         return []
 
-
 def load_run_segments(run_id: int, run_summary: dict):
     resp = requests.get(f"{API_BASE_URL}/api/runs/{run_id}/segments", timeout=15)
     resp.raise_for_status()
@@ -85,17 +83,13 @@ def load_run_segments(run_id: int, run_summary: dict):
     st.session_state.active_run = run_summary
     st.session_state.segments_df = df
 
-
 def upload_file(file):
-    # --- NEW CHANGE 2: Dynamically handle Excel vs CSV MIME types ---
-    # This tells the 'requests' library how to package the file for FastAPI
     if file.name.lower().endswith(".xlsx"):
         mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     else:
         mime_type = "text/csv"
         
     files = {"file": (file.name, file.getvalue(), mime_type)}
-    # ----------------------------------------------------------------
     
     resp = requests.post(f"{API_BASE_URL}/api/upload", files=files, timeout=120)
     if resp.status_code != 200:
@@ -105,11 +99,9 @@ def upload_file(file):
     st.session_state.active_run = data["run"]
     st.session_state.segments_df = pd.DataFrame(data["segments"])
 
-
 def clear_uploaded_file():
     """Resets the file_uploader widget by changing its key, without touching the DB."""
     st.session_state.uploader_key += 1
-
 
 def delete_run(run_id: int):
     resp = requests.delete(f"{API_BASE_URL}/api/runs/{run_id}", timeout=15)
@@ -129,15 +121,13 @@ with st.sidebar:
     st.title("📊 RFM Engine")
     st.caption(f"Backend: {API_BASE_URL}")
 
-    # --- NEW CHANGE 3: Update text and allow .xlsx extensions ---
     st.subheader("Upload transaction log")
     uploaded_file = st.file_uploader(
-        "CSV or Excel with TransactionID, CustomerID, OrderDate, Amount "
-        "(Email optional)",
-        type=["csv", "xlsx"], # Allowed extensions updated here
+        "CSV or Excel with TransactionID, CustomerID, OrderDate, Amount (Email optional)",
+        type=["csv", "xlsx"],
         key=f"uploader_{st.session_state.uploader_key}",
     )
-    # ------------------------------------------------------------
+    
     if uploaded_file is not None:
         col_a, col_b = st.columns(2)
         with col_a:
@@ -216,109 +206,114 @@ run = st.session_state.active_run
 df = st.session_state.segments_df
 
 if run is None or df is None or df.empty:
-    # --- NEW CHANGE 4: Update dashboard welcome text ---
     st.info(
         "Upload a transaction CSV or Excel file in the sidebar to run the segmentation "
         "pipeline, or load a previous run."
     )
-    # ---------------------------------------------------
     st.markdown(
         "**Required columns:** `TransactionID`, `CustomerID`, `OrderDate`, "
         "`Amount`  \n**Optional:** `Email`"
     )
     st.stop()
 
-# --- KPI row ---------------------------------------------------------------
-col1, col2, col3, col4 = st.columns(4)
-col1.metric("Total Revenue", f"${run['total_revenue']:,.2f}")
-col2.metric("Processed Customers", f"{run['total_customers']:,}")
-segment_counts = run.get("segment_counts") or df["segment"].value_counts().to_dict()
-champions = segment_counts.get("Champions", 0)
-at_risk = segment_counts.get("At-Risk", 0)
-col3.metric("Champions", champions)
-col4.metric("At-Risk", at_risk)
 
-st.caption(
-    f"Run #{run['id']} · file: {run['filename']} · "
-    f"uploaded: {run['upload_timestamp']}"
-)
+# ==========================================
+# UI UPGRADE: TABS
+# ==========================================
+tab1, tab2 = st.tabs(["🗺️ Dashboard & Visualisations", "⬇️ Actionable Exports"])
 
-st.divider()
+# --- TAB 1: VISUALISATIONS & KPIs ---
+with tab1:
+    # --- KPI row ---
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Total Revenue", f"${run['total_revenue']:,.2f}")
+    col2.metric("Processed Customers", f"{run['total_customers']:,}")
+    segment_counts = run.get("segment_counts") or df["segment"].value_counts().to_dict()
+    champions = segment_counts.get("Champions", 0)
+    at_risk = segment_counts.get("At-Risk", 0)
+    col3.metric("🏆 Champions", champions)
+    col4.metric("⚠️ At-Risk", at_risk)
 
-# --- Cohort size bar chart --------------------------------------------------
-left, right = st.columns([1, 2])
-with left:
-    st.subheader("Cohort sizes")
-    counts_df = (
-        pd.Series(segment_counts, name="customers")
-        .reindex(["Champions", "Loyal Customers", "At-Risk", "Hibernating"])
-        .fillna(0)
-        .reset_index()
-        .rename(columns={"index": "segment"})
+    st.caption(
+        f"Run #{run['id']} · file: {run['filename']} · "
+        f"uploaded: {run['upload_timestamp']}"
     )
-    bar_fig = px.bar(
-        counts_df,
-        x="segment",
-        y="customers",
-        color="segment",
-        color_discrete_map=SEGMENT_COLORS,
+
+    st.divider()
+
+    # --- Charts ---
+    left, right = st.columns([1, 2])
+    
+    with left:
+        st.subheader("Cohort sizes")
+        counts_df = (
+            pd.Series(segment_counts, name="customers")
+            .reindex(["Champions", "Loyal Customers", "At-Risk", "Hibernating"])
+            .fillna(0)
+            .reset_index()
+            .rename(columns={"index": "segment"})
+        )
+        bar_fig = px.bar(
+            counts_df,
+            x="segment",
+            y="customers",
+            color="segment",
+            color_discrete_map=SEGMENT_COLORS,
+        )
+        bar_fig.update_layout(showlegend=False, height=380)
+        st.plotly_chart(bar_fig, use_container_width=True)
+
+    with right:
+        st.subheader("3D RFM cluster view (log-transformed)")
+        plot_df = df.copy()
+        for col, src in [("log_recency", "recency"), ("log_frequency", "frequency"), ("log_monetary", "monetary")]:
+            if col not in plot_df.columns:
+                plot_df[col] = plot_df[src].apply(lambda v: pd.NA)
+
+        if plot_df["log_recency"].isna().all():
+            plot_df["log_recency"] = np.log1p(plot_df["recency"])
+            plot_df["log_frequency"] = np.log1p(plot_df["frequency"])
+            plot_df["log_monetary"] = np.log1p(plot_df["monetary"])
+
+        scatter_fig = px.scatter_3d(
+            plot_df,
+            x="log_recency",
+            y="log_frequency",
+            z="log_monetary",
+            color="segment",
+            color_discrete_map=SEGMENT_COLORS,
+            hover_data=["customer_id"],
+            template="plotly_dark", # UI UPGRADE: Dark theme for the 3D plot
+            labels={
+                "log_recency": "log(Recency)",
+                "log_frequency": "log(Frequency)",
+                "log_monetary": "log(Monetary)",
+            },
+        )
+        scatter_fig.update_layout(height=420, margin=dict(l=0, r=0, t=10, b=0))
+        st.plotly_chart(scatter_fig, use_container_width=True)
+
+
+# --- TAB 2: ACTIONABLE EXPORTS ---
+with tab2:
+    st.subheader("Targeted export")
+    segment_options = ["All"] + sorted(df["segment"].unique().tolist())
+    selected_segment = st.selectbox("Filter by cohort", segment_options)
+
+    filtered = df if selected_segment == "All" else df[df["segment"] == selected_segment]
+    display_cols = ["customer_id", "email", "recency", "frequency", "monetary", "segment"]
+    st.dataframe(filtered[display_cols], use_container_width=True, height=400)
+
+    export_cols = ["customer_id", "email"]
+    csv_bytes = filtered[export_cols].rename(
+        columns={"customer_id": "CustomerID", "email": "Email"}
+    ).to_csv(index=False).encode("utf-8")
+
+    file_suffix = selected_segment.replace(" ", "_").lower()
+    st.download_button(
+        label=f"Download '{selected_segment}' list as CSV ({len(filtered)} customers)",
+        data=csv_bytes,
+        file_name=f"run_{run['id']}_{file_suffix}.csv",
+        mime="text/csv",
+        type="primary",
     )
-    bar_fig.update_layout(showlegend=False, height=380)
-    st.plotly_chart(bar_fig, use_container_width=True)
-
-# --- 3D scatter --------------------------------------------------------------
-with right:
-    st.subheader("3D RFM cluster view (log-transformed)")
-    plot_df = df.copy()
-    for col, src in [("log_recency", "recency"), ("log_frequency", "frequency"), ("log_monetary", "monetary")]:
-        if col not in plot_df.columns:
-            plot_df[col] = plot_df[src].apply(lambda v: pd.NA)
-    # Fall back to computing log values client-side if the API didn't include them.
-    import numpy as np
-
-    if plot_df["log_recency"].isna().all():
-        plot_df["log_recency"] = np.log1p(plot_df["recency"])
-        plot_df["log_frequency"] = np.log1p(plot_df["frequency"])
-        plot_df["log_monetary"] = np.log1p(plot_df["monetary"])
-
-    scatter_fig = px.scatter_3d(
-        plot_df,
-        x="log_recency",
-        y="log_frequency",
-        z="log_monetary",
-        color="segment",
-        color_discrete_map=SEGMENT_COLORS,
-        hover_data=["customer_id"],
-        labels={
-            "log_recency": "log(Recency)",
-            "log_frequency": "log(Frequency)",
-            "log_monetary": "log(Monetary)",
-        },
-    )
-    scatter_fig.update_layout(height=420, margin=dict(l=0, r=0, t=10, b=0))
-    st.plotly_chart(scatter_fig, use_container_width=True)
-
-st.divider()
-
-# --- Actionable export -------------------------------------------------------
-st.subheader("Targeted export")
-segment_options = ["All"] + sorted(df["segment"].unique().tolist())
-selected_segment = st.selectbox("Filter by cohort", segment_options)
-
-filtered = df if selected_segment == "All" else df[df["segment"] == selected_segment]
-display_cols = ["customer_id", "email", "recency", "frequency", "monetary", "segment"]
-st.dataframe(filtered[display_cols], use_container_width=True, height=320)
-
-export_cols = ["customer_id", "email"]
-csv_bytes = filtered[export_cols].rename(
-    columns={"customer_id": "CustomerID", "email": "Email"}
-).to_csv(index=False).encode("utf-8")
-
-file_suffix = selected_segment.replace(" ", "_").lower()
-st.download_button(
-    label=f"Download '{selected_segment}' list as CSV ({len(filtered)} customers)",
-    data=csv_bytes,
-    file_name=f"run_{run['id']}_{file_suffix}.csv",
-    mime="text/csv",
-    type="primary",
-)
