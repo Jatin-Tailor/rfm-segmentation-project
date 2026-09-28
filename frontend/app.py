@@ -241,6 +241,23 @@ with tab1:
 
     st.divider()
 
+    # --- NEW FEATURE: Cluster Profiling (Explainable AI) ---
+    with st.expander("📊 View Average Metrics per Cluster (Explainable AI)", expanded=True):
+        st.markdown("This table proves the K-Means algorithm successfully grouped customers by value. Notice how **Champions** have the highest monetary spend and lowest recency (recently active).")
+        
+        # Calculate the averages for each segment
+        profile_df = df.groupby("segment")[["recency", "frequency", "monetary"]].mean().reset_index()
+        profile_df.rename(columns={"segment": "Customer Segment", "recency": "Avg Recency (Days)", "frequency": "Avg Frequency", "monetary": "Avg Spend ($)"}, inplace=True)
+        
+        # Round the numbers to look clean
+        profile_df["Avg Recency (Days)"] = profile_df["Avg Recency (Days)"].round(1)
+        profile_df["Avg Frequency"] = profile_df["Avg Frequency"].round(1)
+        profile_df["Avg Spend ($)"] = profile_df["Avg Spend ($)"].round(2)
+        
+        st.dataframe(profile_df, use_container_width=True, hide_index=True)
+    
+    st.write("") # Tiny spacer
+
     # --- Charts ---
     left, right = st.columns([1, 2])
     
